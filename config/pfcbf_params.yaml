@@ -1,0 +1,11 @@
+PFCBFNode
+  ros__parameters
+    alpha: 0.2
+    delta: 0.05
+    nx: 3
+    nu: 2
+    b_max: 0.01
+    d: 0.05
+    r_robot: 0.1
+    input_bounds: false
+    use_orientation_CBF: true
