@@ -13,4 +13,11 @@
 * /cmd_vel (geometry_msgs/Twist)
 
 ## Example Using Turtlebot3
+Start gazebo simulation of turtlebot
 > ros2 launch turtlebot3_gazebo turtlebot3_house.launch.py
+
+Run navigation stack (requires map of the environment, also need to remap /cmd_vel topic to /cmd_vel_ref)
+> ros2 launch turtlebot3_navigation2 navigation2.launch.py
+
+Run risk-aware controller
+> ros2 run pfcbf pfcbf_node
