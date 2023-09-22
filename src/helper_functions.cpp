@@ -35,3 +35,24 @@ MatrixXd sigma_x(MyPose p){
     return sigma;
 }
 
+
+VectorXd f_x_SI(MyPose p){
+    VectorXd f = VectorXd::Zero(3);
+    return f;
+}
+
+MatrixXd g_x_SI(MyPose p){
+    MatrixXd g = MatrixXd::Zero(3, 2);
+    g << cos(p[2]), -sin(p[2]),
+         sin(p[2]), cos(p[2]),
+         0., 0.;
+    return g;
+}
+
+MatrixXd sigma_x_SI(MyPose p){
+    MatrixXd sigma = MatrixXd::Zero(3, 2);
+    sigma << 0.01, 0.,
+             0., 0.01,
+             0., 0.;
+    return sigma;
+}

@@ -27,6 +27,7 @@ struct parameters{
     double d; // relative displacement of point used for collision detection
     bool input_bounds;
     bool use_orientation_CBF;
+    bool use_SI; // use signle integrator model
 };
 
 // Euclidean distance
@@ -35,13 +36,18 @@ double euclidean_dist(MyPose pose1, MyPose pose2);
 // Sorting operation with permutation
 vector<pair<double, int>> sortVec(vector<double> vec);
 
+// Vector Fields for velocity based motion model
 // Vector Field f
 VectorXd f_x(MyPose p);
-
 // input affine mapping g_x
 MatrixXd g_x(MyPose p);
-
 // drift term
 MatrixXd sigma_x(MyPose p);
+
+
+// Vector fields for single integrator model
+VectorXd f_x_SI(MyPose p);
+MatrixXd g_x_SI(MyPose p);
+MatrixXd sigma_x_SI(MyPose p);
 
 #endif // HELPER_FUNCTIONS_H

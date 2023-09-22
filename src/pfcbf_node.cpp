@@ -26,6 +26,12 @@ private:
     // PFCBF controller
     pfcbf* controller;
 
+    // map ID
+    string global_frame;
+
+    // reference control
+    geometry_msgs::msg::Twist u_ref_msg;
+
     // Publisher
     rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr pub_control;
     // rclcpp::Publisher<geometry_msgs::msg::PoseArray>::SharedPtr pub_belief;
@@ -62,8 +68,11 @@ public:
         this->declare_parameter("delta", rclcpp::ParameterValue(0.05));
         this->declare_parameter("b_max", rclcpp::ParameterValue(0.01));
         this->declare_parameter("d", rclcpp::ParameterValue(0.05));
-        this->declare_parameter("r_robot", rclcpp::ParameterValue(0.1));
+        this->declare_parameter("r_robot", rclcpp::ParameterValue(0.35));
+        this->declare_parameter("global_frame", rclcpp::ParameterValue("map"));
         
+        global_frame = get_parameter("global_frame").as_string();
+
         // Default parameters
         params = new parameters();
         params->obstacle_pos = {1., 1., 0.};
@@ -73,10 +82,11 @@ public:
         params->nx = 3;
         params->nu = 2;
         params->b_max = 0.01;
-        params->r_robot = 0.1;
+        params->r_robot = 0.35;
         params->d = 0.05;
         params->input_bounds = false;
-        params->use_orientation_CBF = true;
+        params->use_orientation_CBF = false;
+        params->use_SI = true;
 
         // initialize some random particle belief
         std::random_device rd;
@@ -96,14 +106,14 @@ public:
         controller = new pfcbf(params, init_belief);
 
         // publishers
-        pub_control = this->create_publisher<geometry_msgs::msg::Twist>("/cmd_vel", 1);
+        pub_control = this->create_publisher<geometry_msgs::msg::Twist>("cmd_vel", 1);
         // pub_belief = this->create_publisher<geometry_msgs::msg::PoseArray>("pfcbf/particle_cloud", 1);
 
         // subscribers
         rclcpp::QoS qos(10); // Set the history depth to 10 (modify this according to your use case)
         qos.reliability(RMW_QOS_POLICY_RELIABILITY_BEST_EFFORT); // Set the reliability to BEST_EFFORT
 
-        sub_pf = this->create_subscription<nav2_msgs::msg::ParticleCloud>("/particle_cloud", qos,
+        sub_pf = this->create_subscription<nav2_msgs::msg::ParticleCloud>("particle_cloud", qos,
             std::bind(&PFCBFNode::pf_callback, this, std::placeholders::_1));
         sub_control = this->create_subscription<geometry_msgs::msg::Twist>("cmd_vel_ref", 1,
             std::bind(&PFCBFNode::control_callback, this, std::placeholders::_1));
@@ -112,7 +122,7 @@ public:
         pf_marker = this->create_publisher<visualization_msgs::msg::MarkerArray>("pf_marker", 1);
 
         // polygon visualization
-        point_ = this->create_subscription<geometry_msgs::msg::PointStamped>("/clicked_point", 1,
+        point_ = this->create_subscription<geometry_msgs::msg::PointStamped>("clicked_point", 1,
             std::bind(&PFCBFNode::point_callback, this, std::placeholders::_1));
         circle_viz_ = this->create_publisher<visualization_msgs::msg::Marker>("circle_marker", 1);
 
@@ -153,10 +163,15 @@ public:
     }
 
     void control_callback(const geometry_msgs::msg::Twist::SharedPtr msg) {
+        u_ref_msg = *msg;
         // reference control: u = [v, w]
         VectorXd u_ref(2);
-        u_ref << msg->linear.x, msg->angular.z;
-
+        if (params->use_SI){
+            u_ref << msg->linear.x, msg->linear.y;
+        }
+        else{
+            u_ref << msg->linear.x, msg->angular.z;
+        }
         controller->set_reference(u_ref);
     }
 
@@ -166,12 +181,24 @@ public:
 
         // publish safe control msg
         geometry_msgs::msg::Twist safe_control;
-        safe_control.linear.x = u_safe(0);
-        safe_control.linear.y = 0.;
-        safe_control.linear.z = 0.;
-        safe_control.angular.x = 0.;
-        safe_control.angular.y = 0.;
-        safe_control.angular.z = u_safe(1);
+
+        if (params->use_SI){
+            safe_control.linear.x = u_safe(0);
+            safe_control.linear.y = u_safe(1);
+            safe_control.linear.z = 0.;
+            safe_control.angular.x = 0.;
+            safe_control.angular.y = 0.;
+            safe_control.angular.z = u_ref_msg.angular.z;
+        }
+        else{
+            safe_control.linear.x = u_safe(0);
+            safe_control.linear.y = 0.;
+            safe_control.linear.z = 0.;
+            safe_control.angular.x = 0.;
+            safe_control.angular.y = 0.;
+            safe_control.angular.z = u_safe(1);
+        }
+        
         pub_control->publish(safe_control);
     }
 
@@ -182,7 +209,7 @@ public:
     void publish_markers() {
         if (defined_safeset){
                 visualization_msgs::msg::Marker marker;
-                marker.header.frame_id = "map"; // Set the frame ID according to your coordinate system
+                marker.header.frame_id = global_frame; // Set the frame ID according to your coordinate system
                 // marker.header.stamp = ros::Time::now();
                 marker.type = visualization_msgs::msg::Marker::SPHERE;
                 marker.pose.position.x = obstacle_pos[0];
@@ -195,10 +222,10 @@ public:
                 marker.scale.x = 2 * obstacle_radius; // Sphere diameter
                 marker.scale.y = 2 * obstacle_radius;
                 marker.scale.z = 0.0001;
-                marker.color.a = 0.3; // Alpha (transparency)
+                marker.color.a = 0.5; // Alpha (transparency)
                 marker.color.r = 0.0; // Red
-                marker.color.g = 0.0; // Green
-                marker.color.b = 1.0; // Blue
+                marker.color.g = 100./255.; // Green
+                marker.color.b = 222./255.; // Blue
                 circle_viz_->publish(marker);
             }
     }
@@ -278,7 +305,7 @@ int main(int argc, char **argv) {
     rclcpp::init(argc, argv);
     auto node = std::make_shared<PFCBFNode>(rclcpp::NodeOptions());
 
-    rclcpp::Rate rate(50);
+    rclcpp::Rate rate(30);
 
     // double begin_time, end_time;
     while (rclcpp::ok()) {

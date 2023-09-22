@@ -28,7 +28,8 @@ pfcbf::pfcbf(parameters* params_, belief init_belief){
     // initialize gradient and hessian
     Eigen::SparseMatrix<double> Hcost_sparse(params->nu, params->nu);
     Hcost_sparse.setIdentity();
-    Hcost_sparse.coeffRef(0, 0) = 300;
+    // Hcost_sparse.coeffRef(0, 0) = 300;
+    Hcost_sparse.coeffRef(0, 0) = 100;
     VectorXd gCost = VectorXd::Zero(params->nu);
     solver.data()->setHessianMatrix(Hcost_sparse);
     solver.data()->setGradient(gCost);
@@ -82,7 +83,7 @@ pfcbf::pfcbf(parameters* params_, belief init_belief){
 }
 
 double pfcbf::evaluate_h_x(MyPose pose){
-    return euclidean_dist(pose, MyPose{params->obstacle_pos[0], params->obstacle_pos[1], 0.}) - params->obstacle_radius;
+    return euclidean_dist(pose, MyPose{params->obstacle_pos[0], params->obstacle_pos[1], 0.}) - (params->obstacle_radius + params->r_robot);
 }
 
 VectorXd pfcbf::gradient_h_x(MyPose pose){
@@ -185,6 +186,11 @@ VectorXd pfcbf::get_control(){
     // cout << "Lgh beginning " << Lgh_ << endl;
     // gradient of h wrt \xi_i
     double dhdxi = 0.;
+
+    VectorXd fx;
+    MatrixXd gx;
+    MatrixXd sx;
+
     for (int i = 0; i < N; i++){
         if (active_particles[i] != 0.){
             MyPose x_i = pf_belief[h_sorted[i].second];
@@ -194,15 +200,25 @@ VectorXd pfcbf::get_control(){
             else{
                 dhdxi = (1 / params->alpha) * (active_particles[i-1] - active_particles[i]);
             }
-            if (!params->use_orientation_CBF){
-                Lfh += - dhdxi * gradient_h_x(x_i).dot(f_x(x_i));
-                Lgh_ += - dhdxi * gradient_h_x(x_i).transpose() * g_x(x_i);
-                trace_term += - sigma_x(x_i).transpose() * hessian_h_x(x_i) * sigma_x(x_i);
+            if (params->use_SI){
+                fx = f_x_SI(x_i);
+                gx = g_x_SI(x_i);
+                sx = sigma_x_SI(x_i);
             }
             else{
-                Lfh += - dhdxi * gradient_h_orientation_x(x_i).dot(f_x(x_i));
-                Lgh_ += - dhdxi * gradient_h_orientation_x(x_i).transpose() * g_x(x_i);
-                trace_term += - sigma_x(x_i).transpose() * hessian_h_orientation_x(x_i) * sigma_x(x_i);
+                fx = f_x(x_i);
+                gx = g_x(x_i);
+                sx = sigma_x(x_i);
+            }
+            if (!params->use_orientation_CBF){
+                Lfh += - dhdxi * gradient_h_x(x_i).dot(fx);
+                Lgh_ += - dhdxi * gradient_h_x(x_i).transpose() * gx;
+                trace_term += - sx.transpose() * hessian_h_x(x_i) * sx;
+            }
+            else{
+                Lfh += - dhdxi * gradient_h_orientation_x(x_i).dot(fx);
+                Lgh_ += - dhdxi * gradient_h_orientation_x(x_i).transpose() * gx;
+                trace_term += - sx.transpose() * hessian_h_orientation_x(x_i) * sx;
             }
         }
     }
@@ -255,9 +271,24 @@ void pfcbf::sample_motion_model(MyPose& p, VectorXd u, double dt){
     std::normal_distribution<double> sample_dist(0., dt);
     BrownianIncrement(0) = sample_dist(gen);
     BrownianIncrement(1) = sample_dist(gen);
+
+    VectorXd fx;
+    MatrixXd gx;
+    MatrixXd sx;
+
+    if (params->use_SI){
+        fx = f_x_SI(p);
+        gx = g_x_SI(p);
+        sx = sigma_x_SI(p);
+    }
+    else{
+        fx = f_x(p);
+        gx = g_x(p);
+        sx = sigma_x(p);
+    }
     
     // Euler Maryuama method for integrating SDE
-    VectorXd dx = (f_x(p) + g_x(p) * u) * dt + sigma_x(p) * BrownianIncrement;
+    VectorXd dx = (fx + gx * u) * dt + sx * BrownianIncrement;
     p[0] += dx(0);
     p[1] += dx(1);
     p[2] += dx(2);
