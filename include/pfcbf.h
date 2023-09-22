@@ -6,12 +6,17 @@
 
 class pfcbf {
     private:
+        // parameters
         parameters* params;
-        OsqpEigen::Solver solver;   // osqp solver 
+        //QP solver
+        OsqpEigen::Solver solver;
+        // Lie derivative
         Eigen::SparseMatrix<double> Lgh;
+        // constraints
         VectorXd lbAconstr;
         VectorXd ubAconstr;
         std::mt19937 gen;
+        // control inputs
         VectorXd last_u;
         VectorXd u_ref;
     
