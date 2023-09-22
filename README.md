@@ -22,4 +22,6 @@ Run navigation stack (requires map of the environment, also need to remap /cmd_v
 Run risk-aware controller
 > ros2 run pfcbf pfcbf_node
 
-Once the pfcbf node is running, we need to publish 2 points in RVIZ which represent the center of a circle as well as a point on the boundary of the circle. This is the area that we want the robot to avoid. An exemplary video can is shown subsequently.
+Once the pfcbf node is running, we need to publish 2 points in RVIZ which represent the center of a circle as well as a point on the boundary of the circle. This is the area that we want the robot to avoid. An exemplary video is shown subsequently.
+
+![PFCBFInstructionGIF](https://github.com/mattivahs/pfcbf_ros2/assets/44931473/10405b2c-eef3-4a41-8440-4a8de18564b2)
