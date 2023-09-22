@@ -13,7 +13,7 @@
 * /cmd_vel (geometry_msgs/Twist)
 
 ## Example Using Turtlebot3
-Start gazebo simulation of turtlebot
+Start gazebo simulation of turtlebot (https://emanual.robotis.com/docs/en/platform/turtlebot3/navigation/#navigation)
 > ros2 launch turtlebot3_gazebo turtlebot3_house.launch.py
 
 Run navigation stack (requires map of the environment, also need to remap /cmd_vel topic to /cmd_vel_ref)
@@ -21,3 +21,5 @@ Run navigation stack (requires map of the environment, also need to remap /cmd_v
 
 Run risk-aware controller
 > ros2 run pfcbf pfcbf_node
+
+Once the pfcbf node is running, we need to publish 2 points in RVIZ which represent the center of a circle as well as a point on the boundary of the circle. This is the area that we want the robot to avoid. An exemplary video can is shown subsequently.
