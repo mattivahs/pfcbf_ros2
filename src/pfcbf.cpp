@@ -31,7 +31,7 @@ pfcbf::pfcbf(parameters* params_, belief init_belief){
 
     // Set higher weight on deviation from reference velocity v
     // Hcost_sparse.coeffRef(0, 0) = 300;
-    Hcost_sparse.coeffRef(0, 0) = 100;
+    Hcost_sparse.coeffRef(0, 0) = 500;
     VectorXd gCost = VectorXd::Zero(params->nu);
     solver.data()->setHessianMatrix(Hcost_sparse);
     solver.data()->setGradient(gCost);
