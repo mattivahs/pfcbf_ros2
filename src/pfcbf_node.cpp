@@ -83,10 +83,11 @@ public:
         params->nu = 2;
         params->b_max = 0.01;
         params->r_robot = 0.1;
-        params->d = 0.05;
+        params->d = 0.1;
         params->input_bounds = false;
-        params->use_orientation_CBF = true;
-        params->use_SI = false;
+        params->use_orientation_CBF = false;
+        params->use_SI = true;
+        params->use_RSCBF = true;
 
         // initialize some random particle belief
         std::random_device rd;

@@ -28,6 +28,7 @@ struct parameters{
     bool input_bounds;
     bool use_orientation_CBF;
     bool use_SI; // use signle integrator model
+    bool use_RSCBF;
 };
 
 // Euclidean distance

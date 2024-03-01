@@ -27,6 +27,9 @@ class pfcbf {
         double evaluate_h_x(MyPose pose); // State CBF
         VectorXd gradient_h_x(MyPose pose); // gradient of state CBF
         MatrixXd hessian_h_x(MyPose pose); // hessian of state CBF
+        double evaluate_B_x(MyPose pose); // State RCBF
+        VectorXd gradient_B_x(MyPose pose); // gradient of state RCBF
+        MatrixXd hessian_B_x(MyPose pose); // hessian of state RCBF
         double evaluate_h_orientation_x(MyPose pose); // State CBF
         VectorXd gradient_h_orientation_x(MyPose pose); // gradient of state CBF
         MatrixXd hessian_h_orientation_x(MyPose pose); // hessian of state CBF

@@ -18,6 +18,7 @@ pfcbf::pfcbf(parameters* params_, belief init_belief){
     // setup QP solver
     // number of optimization variables (control dimension)
     solver.data()->setNumberOfVariables(params->nu);
+    solver.settings()->setVerbosity(false);
     // number of constraints (barrier constraint + potentially input saturation)
     if (!params->input_bounds){
         solver.data()->setNumberOfConstraints(1);
@@ -31,7 +32,7 @@ pfcbf::pfcbf(parameters* params_, belief init_belief){
 
     // Set higher weight on deviation from reference velocity v
     // Hcost_sparse.coeffRef(0, 0) = 300;
-    Hcost_sparse.coeffRef(0, 0) = 500;
+    Hcost_sparse.coeffRef(0, 0) = 300;
     VectorXd gCost = VectorXd::Zero(params->nu);
     solver.data()->setHessianMatrix(Hcost_sparse);
     solver.data()->setGradient(gCost);
@@ -106,6 +107,51 @@ MatrixXd pfcbf::hessian_h_x(MyPose pose){
     hessian(0, 1) = - ((pose[0] - params->obstacle_pos[0]) * (pose[1] - params->obstacle_pos[1])) / pow(d, 3);
     hessian(1, 0) = hessian(0, 1);
     return hessian;
+}
+
+// Reciprocal Stochastic CBF
+// Evaluate B(x)
+double pfcbf::evaluate_B_x(MyPose pose){
+    double h_x = evaluate_h_x(pose);
+    if (h_x == 0) {
+        // Avoid division by zero
+        return std::numeric_limits<double>::infinity();
+    }
+    return 1.0 / h_x;
+}
+
+// Gradient of B(x)
+VectorXd pfcbf::gradient_B_x(MyPose pose){
+    double h_x = evaluate_h_x(pose);
+    VectorXd gradient_h = gradient_h_x(pose);
+    VectorXd gradient_B = VectorXd::Zero(3);
+
+    if (h_x == 0) {
+        // Handle gradient for h_x = 0 to avoid division by zero
+        gradient_B << std::numeric_limits<double>::infinity(), std::numeric_limits<double>::infinity(), std::numeric_limits<double>::infinity();
+    } else {
+        // Compute gradient of B(x) = 1 / h_x(x)
+        gradient_B = -1.0 / (h_x * h_x) * gradient_h;
+    }
+    return gradient_B;
+}
+
+MatrixXd pfcbf::hessian_B_x(MyPose pose){
+    double h_x = evaluate_h_x(pose);
+    VectorXd gradient_h = gradient_h_x(pose);
+    MatrixXd hessian_h = hessian_h_x(pose);
+    MatrixXd hessian_B = MatrixXd::Zero(3, 3);
+
+    if (h_x == 0) {
+        // Handle hessian for h_x = 0 to avoid division by zero
+        hessian_B << std::numeric_limits<double>::infinity(), std::numeric_limits<double>::infinity(), std::numeric_limits<double>::infinity(),
+                     std::numeric_limits<double>::infinity(), std::numeric_limits<double>::infinity(), std::numeric_limits<double>::infinity(),
+                     std::numeric_limits<double>::infinity(), std::numeric_limits<double>::infinity(), std::numeric_limits<double>::infinity();
+    } else {
+        // Compute hessian of B(x) = 1 / h_x(x)
+        hessian_B = (2 * gradient_h * gradient_h.transpose()) / (h_x * h_x * h_x) - hessian_h / (h_x * h_x);
+    }
+    return hessian_B;
 }
 
 // CBF over states for unicycle model: small offset d included to offer gradient information w.r.t theta
@@ -187,6 +233,7 @@ VectorXd pfcbf::get_control(){
     cvar_bar *= -1;
     double Lfh = 0.;
     MatrixXd trace_term = MatrixXd::Zero(2, 2);
+    MatrixXd trace_term_RSCBF = MatrixXd::Zero(2, 2);
 
     VectorXd Lgh_ = VectorXd::Zero(2);
     double dhdxi = 0.;
@@ -217,6 +264,13 @@ VectorXd pfcbf::get_control(){
                 sx = sigma_x(x_i);
             }
 
+            if (params->use_RSCBF){
+                Lfh += (1 / (cvar_bar * cvar_bar)) * dhdxi * gradient_h_x(x_i).dot(fx);
+                Lgh_ += (1 / (cvar_bar * cvar_bar)) * dhdxi * gradient_h_x(x_i).transpose() * gx;
+                trace_term += (1 / (cvar_bar * cvar_bar)) * sx.transpose() * hessian_h_x(x_i) * sx - \
+                              (2 / pow(cvar_bar, 3)) * sx.transpose() * (pow(dhdxi, 2) * gradient_h_x(x_i) * gradient_h_x(x_i).transpose()) * sx;
+    
+            }
             // determine which CBF to use
             if (!params->use_orientation_CBF){
                 Lfh += - dhdxi * gradient_h_x(x_i).dot(fx);
@@ -231,14 +285,27 @@ VectorXd pfcbf::get_control(){
         }
     }
     
-    // Update Lie derivatives
-    Lgh.coeffRef(0, 0) = Lgh_(0);
-    Lgh.coeffRef(0, 1) = Lgh_(1);
-    
-    Eigen::SparseMatrix<double> UpdatedConstrMatrix = Lgh_.transpose().sparseView();
-    
-    // update right hand side of barrier constraint
-    lbAconstr(0) = - 0.5 * cvar_bar - Lfh - 0.5 * trace_term.trace() - Lgh_.dot(u_ref);
+    if (params->use_RSCBF){
+        // Update Lie derivatives
+        Lgh.coeffRef(0, 0) = - Lgh_(0);
+        Lgh.coeffRef(0, 1) = - Lgh_(1);
+        
+        Eigen::SparseMatrix<double> UpdatedConstrMatrix = Lgh_.transpose().sparseView();
+        
+        // update right hand side of barrier constraint
+        lbAconstr(0) = -(0.5 * cvar_bar - Lfh - 0.5 * trace_term.trace() - Lgh_.dot(u_ref));
+        cout << cvar_bar << endl;
+    }
+    else{
+        // Update Lie derivatives
+        Lgh.coeffRef(0, 0) = Lgh_(0);
+        Lgh.coeffRef(0, 1) = Lgh_(1);
+        
+        Eigen::SparseMatrix<double> UpdatedConstrMatrix = Lgh_.transpose().sparseView();
+        
+        // update right hand side of barrier constraint
+        lbAconstr(0) = - 0.5 * cvar_bar - Lfh - 0.5 * trace_term.trace() - Lgh_.dot(u_ref);
+    }
     solver.updateLowerBound(lbAconstr);
     solver.updateLinearConstraintsMatrix(Lgh);
     
